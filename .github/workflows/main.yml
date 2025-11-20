@@ -1,0 +1,85 @@
+name: Java Maven CI-CD
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build with Maven
+        run: mvn -B clean install
+
+      - name: Run Unit Tests
+        run: mvn test
+
+      - name: Upload JAR Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-app-jar
+          path: target/*.jar
+
+  docker-build-push:
+    needs: build-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # -----------------------------
+      # DockerHub Login
+      # -----------------------------
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # -----------------------------
+      # GHCR Login
+      # -----------------------------
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      # -----------------------------
+      # Docker Build
+      # -----------------------------
+      - name: Build Docker Image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/demo-app:latest .
+
+      # -----------------------------
+      # Tag for GHCR
+      # -----------------------------
+      - name: Tag image for GHCR
+        run: |
+          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/demo-app:latest ghcr.io/${{ github.actor }}/demo-app:latest
+
+      # -----------------------------
+      # Push to DockerHub
+      # -----------------------------
+      - name: Push to DockerHub
+        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/demo-app:latest
+
+      # -----------------------------
+      # Push to GHCR
+      # -----------------------------
+      - name: Push to GHCR
+        run: docker push ghcr.io/${{ github.actor }}/demo-app:latest
